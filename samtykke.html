@@ -101,7 +101,32 @@
     z-index: 10;
   }
 
-  /* ── Swipe Indicator ── */
+  /* ── Snap Button ── */
+  #snap-btn {
+    position: absolute;
+    bottom: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 18px 36px;
+    border-radius: 999px;
+    border: none;
+    background: var(--accent);
+    color: #000;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 4px 24px rgba(240,240,48,0.35);
+    transition: transform 0.12s, filter 0.12s, opacity 0.3s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #snap-btn:active { transform: translateX(-50%) scale(0.95); filter: brightness(0.9); }
+  #snap-btn.busy   { opacity: 0.45; pointer-events: none; }
+
+  /* ── DELETED: Swipe Indicator ── */
   #swipe-indicator {
     position: absolute;
     bottom: 130px;
@@ -313,32 +338,14 @@
   <!-- Header -->
   <header>
     <span class="logo">Samtykke</span>
-    <span class="hint-badge">Swipe → Snap</span>
+    <span class="hint-badge">Tryk → Snap</span>
   </header>
 
   <!-- Counter -->
   <div id="counter">00</div>
 
-  <!-- Swipe Zone -->
-  <div id="swipe-zone"></div>
-
-  <!-- Swipe Indicator -->
-  <div id="swipe-indicator">
-    <div class="arrow-track">
-      <div id="swipe-thumb">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-      <div class="arrow-track-glow"></div>
-    </div>
-    <span class="label">Swipe højre for at tage billede</span>
-  </div>
-
-  <!-- Progress -->
-  <div id="progress-bar-wrap">
-    <div id="progress-bar"></div>
-  </div>
+  <!-- Snap Button -->
+  <button id="snap-btn" aria-label="Tag billede">Jeg giver samtykke</button>
 
   <!-- Toast -->
   <div id="toast">✓ Gemt på din telefon</div>
@@ -360,19 +367,13 @@
   const ring         = document.getElementById('shutter-ring');
   const counter      = document.getElementById('counter');
   const toast        = document.getElementById('toast');
-  const swipeZone    = document.getElementById('swipe-zone');
-  const indicator    = document.getElementById('swipe-indicator');
-  const progressWrap = document.getElementById('progress-bar-wrap');
-  const progressBar  = document.getElementById('progress-bar');
+  const snapBtn      = document.getElementById('snap-btn');
   const permScreen   = document.getElementById('perm-screen');
   const permBtn      = document.getElementById('perm-btn');
 
-  let snapCount    = 0;
-  let swipeStartX  = null;
-  let swipeActive  = false;
-  const SWIPE_DIST = 120;
-  let toastTimer   = null;
-  let snapping     = false;
+  let snapCount  = 0;
+  let toastTimer = null;
+  let snapping   = false;
 
   // ── Camera ──
   async function startCamera() {
@@ -390,14 +391,14 @@
   }
   permBtn.addEventListener('click', startCamera);
 
+  // ── Snap Button ──
+  snapBtn.addEventListener('click', takeSnap);
+
   // ── Snap ──
   function takeSnap() {
     if (snapping) return;
     snapping = true;
-
-    indicator.style.opacity = '0';
-    progressWrap.style.opacity = '0';
-    progressBar.style.width = '0%';
+    snapBtn.classList.add('busy');
 
     // Flash
     flash.classList.remove('fade');
@@ -420,7 +421,6 @@
     canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // Mirror
     ctx.save();
     ctx.translate(W, 0);
     ctx.scale(-1, 1);
@@ -428,25 +428,21 @@
     ctx.restore();
 
     // ── Consent frame ──
-    const frameH   = Math.round(H * 0.13);   // height of the bottom bar
-    const fontSize  = Math.round(frameH * 0.42);
+    const frameH  = Math.round(H * 0.13);
+    const fontSize = Math.round(frameH * 0.42);
 
-    // Dark semi-transparent bar
     ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
     ctx.fillRect(0, H - frameH, W, frameH);
 
-    // Accent top border line
     ctx.fillStyle = '#f0f030';
     ctx.fillRect(0, H - frameH, W, Math.max(3, Math.round(frameH * 0.06)));
 
-    // Text
     ctx.font = `600 ${fontSize}px 'DM Sans', sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Jeg giver samtykke', W / 2, H - frameH / 2);
 
-    // Save to device
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     autoSave(dataUrl);
     showToast('✓ Gemt på din telefon');
@@ -457,12 +453,12 @@
     setTimeout(() => counter.classList.remove('active'), 600);
 
     setTimeout(() => {
-      indicator.style.opacity = '1';
       snapping = false;
+      snapBtn.classList.remove('busy');
     }, 700);
   }
 
-  // ── Auto-save to device ──
+  // ── Auto-save ──
   function autoSave(dataUrl) {
     const a = document.createElement('a');
     a.href = dataUrl;
@@ -478,54 +474,6 @@
     toast.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
-  }
-
-  // ── Touch swipe ──
-  swipeZone.addEventListener('touchstart', (e) => {
-    if (snapping) return;
-    swipeStartX = e.touches[0].clientX;
-    swipeActive = true;
-    progressWrap.style.opacity = '1';
-  }, { passive: true });
-
-  swipeZone.addEventListener('touchmove', (e) => {
-    if (!swipeActive || swipeStartX === null) return;
-    const dx = e.touches[0].clientX - swipeStartX;
-    if (dx < 0) { progressBar.style.width = '0%'; return; }
-    const pct = Math.min(100, (dx / SWIPE_DIST) * 100);
-    progressBar.style.width = pct + '%';
-    progressBar.style.background = pct >= 100 ? '#ff4d6d' : 'var(--accent)';
-    if (pct >= 100) { takeSnap(); resetSwipe(); }
-  }, { passive: true });
-
-  swipeZone.addEventListener('touchend',   resetSwipe, { passive: true });
-  swipeZone.addEventListener('touchcancel',resetSwipe, { passive: true });
-
-  // ── Mouse swipe (desktop testing) ──
-  swipeZone.addEventListener('mousedown', (e) => {
-    if (snapping) return;
-    swipeStartX = e.clientX;
-    swipeActive = true;
-    progressWrap.style.opacity = '1';
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!swipeActive || swipeStartX === null) return;
-    const dx = e.clientX - swipeStartX;
-    if (dx < 0) { progressBar.style.width = '0%'; return; }
-    const pct = Math.min(100, (dx / SWIPE_DIST) * 100);
-    progressBar.style.width = pct + '%';
-    progressBar.style.background = pct >= 100 ? '#ff4d6d' : 'var(--accent)';
-    if (pct >= 100) { takeSnap(); resetSwipe(); }
-  });
-  window.addEventListener('mouseup', resetSwipe);
-
-  function resetSwipe() {
-    swipeStartX = null;
-    swipeActive = false;
-    if (!snapping) {
-      progressWrap.style.opacity = '0';
-      progressBar.style.width = '0%';
-    }
   }
 
   // ── Prevent pull-to-refresh on mobile ──
